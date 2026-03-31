@@ -22,7 +22,6 @@ from .const import (
     RECONNECT_BASE_DELAY,
     RECONNECT_MAX_DELAY,
     RX_CHAR_UUID,
-    SERVICE_UUID,
     TX_CHAR_UUID,
 )
 from .protocol import (
@@ -107,7 +106,6 @@ class KWatchBleClient:
                 ble_device,
                 self._address,
                 disconnected_callback=self._on_disconnect,
-                services=[SERVICE_UUID],
             )
 
             await self._client.start_notify(RX_CHAR_UUID, self._on_notification)

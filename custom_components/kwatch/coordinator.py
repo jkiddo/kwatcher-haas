@@ -61,9 +61,9 @@ class KWatchCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     async def async_setup(self) -> None:
-        """Start the BLE connection and watch for advertisements."""
+        """Start watching for advertisements and connect in background."""
         self.ble_client.start_watching()
-        await self.ble_client.connect()
+        self.hass.async_create_task(self.ble_client.connect())
 
     async def async_shutdown(self) -> None:
         """Clean up timeout and BLE connection."""
