@@ -12,7 +12,7 @@ from homeassistant.components.bluetooth import (
 from homeassistant.config_entries import ConfigFlow
 from homeassistant.data_entry_flow import FlowResult
 
-from .const import CONF_DEVICE_ADDRESS, CONF_DEVICE_NAME, DOMAIN, SERVICE_UUID
+from .const import CONF_DEVICE_ADDRESS, CONF_DEVICE_NAME, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -77,8 +77,8 @@ class KWatchConfigFlow(ConfigFlow, domain=DOMAIN):
 
         self._discovered_devices = {}
         for info in async_discovered_service_info(self.hass):
-            if SERVICE_UUID in info.service_uuids:
-                self._discovered_devices[info.address] = info.name or "K-WATCH"
+            if info.name and info.name.startswith("K-WATCH"):
+                self._discovered_devices[info.address] = info.name
 
         if self._discovered_devices:
             return self.async_show_form(
