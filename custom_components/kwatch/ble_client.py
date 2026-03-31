@@ -153,10 +153,24 @@ class KWatchBleClient:
             await asyncio.sleep(INTER_PACKET_DELAY)
 
     async def _write(self, data: bytes) -> None:
-        """Write a packet to the TX characteristic."""
+        """Write a packet to the TX characteristic.
+
+        Mirrors the Android SDK strategy: try write-with-response first,
+        fall back to write-without-response, up to 3 attempts.
+        """
         if not self.connected:
             raise ConnectionError("Not connected to K-WATCH")
-        await self._client.write_gatt_char(TX_CHAR_UUID, data, response=True)
+        last_err: Exception | None = None
+        for attempt in range(3):
+            try:
+                response = attempt == 0  # first attempt with response, rest without
+                await self._client.write_gatt_char(TX_CHAR_UUID, data, response=response)
+                return
+            except BleakError as err:
+                last_err = err
+                _LOGGER.debug("Write attempt %d failed: %s", attempt + 1, err)
+                await asyncio.sleep(0.3)
+        raise last_err
 
     def _on_notification(self, _sender: Any, data: bytearray) -> None:
         """Handle incoming BLE notification from the watch."""
