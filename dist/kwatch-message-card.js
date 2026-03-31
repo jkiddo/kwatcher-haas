@@ -1,15 +1,14 @@
 /**
- * K-Watch Messenger - Custom Lovelace Card
+ * K-Watch Messenger - Custom Lovelace Card (MQTT version)
  *
- * Send messages to a K-WATCH and view responses.
+ * Send messages to a K-WATCH via MQTT and view responses.
  */
 
-// Response labels — must match const.py
 const RESPONSE_OK = "OK - got it";
 const RESPONSE_NO = "No";
 const RESPONSE_TIMEOUT = "No response";
-const STATE_CONNECTED = "Connected";
 const DEFAULT_TITLE = "HA";
+const MQTT_COMMAND_TOPIC = "kwatch/command/send_message";
 
 class KWatchMessageCard extends HTMLElement {
   static getConfigElement() {
@@ -18,9 +17,9 @@ class KWatchMessageCard extends HTMLElement {
 
   static getStubConfig() {
     return {
-      response_entity: "sensor.k_watch_last_response",
-      battery_entity: "sensor.k_watch_battery",
-      connection_entity: "sensor.k_watch_connection",
+      response_entity: "sensor.kwatch_last_response",
+      battery_entity: "sensor.kwatch_battery",
+      connection_entity: "binary_sensor.kwatch_connection",
     };
   }
 
@@ -31,7 +30,6 @@ class KWatchMessageCard extends HTMLElement {
       this._render();
       this._rendered = true;
     }
-    // Only update DOM if our entities actually changed
     if (
       oldHass &&
       oldHass.states[this._config.response_entity] ===
@@ -55,6 +53,7 @@ class KWatchMessageCard extends HTMLElement {
       response_entity: config.response_entity,
       battery_entity: config.battery_entity,
       connection_entity: config.connection_entity,
+      command_topic: config.command_topic || MQTT_COMMAND_TOPIC,
     };
     this._rendered = false;
   }
@@ -211,9 +210,9 @@ class KWatchMessageCard extends HTMLElement {
     const message = input.value.trim();
     if (!message || !this._hass) return;
 
-    this._hass.callService("kwatch", "send_message", {
-      message: message,
-      title: DEFAULT_TITLE,
+    this._hass.callService("mqtt", "publish", {
+      topic: this._config.command_topic,
+      payload: JSON.stringify({ title: DEFAULT_TITLE, message }),
     });
     input.value = "";
   }
@@ -231,7 +230,7 @@ class KWatchMessageCard extends HTMLElement {
 
     const dot = this.querySelector(".kw-dot");
     if (dot && connectionState) {
-      const connected = connectionState.state === STATE_CONNECTED;
+      const connected = connectionState.state === "on";
       dot.className = `kw-dot ${connected ? "connected" : "disconnected"}`;
     }
 
@@ -242,7 +241,7 @@ class KWatchMessageCard extends HTMLElement {
 
     const btn = this.querySelector(".kw-send-btn");
     if (btn && connectionState) {
-      btn.disabled = connectionState.state !== STATE_CONNECTED;
+      btn.disabled = connectionState.state !== "on";
     }
 
     const historyList = this.querySelector(".kw-history-list");

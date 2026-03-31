@@ -1,0 +1,13 @@
+{
+  "name": "kwatch-bridge",
+  "version": "1.0.0",
+  "description": "K-WATCH BLE-to-MQTT bridge for Home Assistant",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@stoprocent/noble": "^2.3.17",
+    "mqtt": "^5.0.0"
+  }
+}

@@ -1,0 +1,18 @@
+[Unit]
+Description=K-WATCH BLE-to-MQTT Bridge
+After=network-online.target bluetooth.target
+Wants=network-online.target bluetooth.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node /opt/kwatch-bridge/index.js
+WorkingDirectory=/opt/kwatch-bridge
+Environment=MQTT_BROKER=mqtt://homeassistant.local:1883
+#Environment=MQTT_USERNAME=
+#Environment=MQTT_PASSWORD=
+Restart=always
+RestartSec=10
+User=root
+
+[Install]
+WantedBy=multi-user.target

@@ -1,119 +1,162 @@
 # K-Watch Messenger
 
-A Home Assistant custom integration that turns a [K-WATCH](https://github.com/jkiddo/watch) BLE fitness tracker into a two-way messaging device.
+A two-way messaging system using a [K-WATCH](https://github.com/jkiddo/watch) BLE fitness tracker and Home Assistant.
 
-Send text messages from Home Assistant's web UI to the watch. The watch wearer responds using existing button actions:
+Send text messages from Home Assistant's web UI to the watch. The watch wearer responds using button actions:
 
 - **"Take Photo" button** = **OK - got it**
 - **"Find Device" button** = **No**
 
-## Installation
+## Architecture
 
-### HACS (recommended)
+```
+K-WATCH  <--BLE-->  Raspberry Pi (Node.js bridge)  <--MQTT-->  Home Assistant
+                                                                  └── Lovelace card
+```
 
-1. Open HACS in Home Assistant
-2. Go to **Integrations** > **Custom repositories**
-3. Add `https://github.com/jkiddo/kwatcher-haas` as an **Integration**
-4. Install **K-Watch Messenger**
-5. Restart Home Assistant
-
-### Manual
-
-Copy the `custom_components/kwatch` directory to your Home Assistant `config/custom_components/` directory and restart.
+The bridge runs on a dedicated Raspberry Pi with Raspbian and communicates with HA via MQTT. HA entities are created automatically via MQTT auto-discovery.
 
 ## Setup
 
-After installation:
+### 1. Raspberry Pi (BLE Bridge)
 
-1. Go to **Settings > Devices & Services > Add Integration**
-2. Search for **K-Watch Messenger**
-3. If the watch is nearby and advertising, select it from the list. Otherwise, enter the BLE MAC address manually.
+On a Raspberry Pi running Raspbian:
 
-The integration maintains a persistent BLE connection with automatic reconnection.
+```bash
+git clone https://github.com/jkiddo/kwatcher-haas.git
+cd kwatcher-haas/bridge
+bash install.sh
+```
 
-## Usage
+Edit the MQTT credentials:
 
-### Lovelace Card
+```bash
+sudo systemctl edit kwatch-bridge
+```
 
-Add the card resource under **Settings > Dashboards > Resources**:
+Add:
 
-- **URL:** `/kwatch/kwatch-message-card.js`
-- **Type:** JavaScript Module
+```ini
+[Service]
+Environment=MQTT_BROKER=mqtt://your-ha-ip:1883
+Environment=MQTT_USERNAME=your-user
+Environment=MQTT_PASSWORD=your-pass
+```
 
-Then add the card to a dashboard (Edit > Add Card > Manual):
+Start the service:
+
+```bash
+sudo systemctl start kwatch-bridge
+sudo journalctl -u kwatch-bridge -f
+```
+
+The bridge will scan for a K-WATCH, connect, and start publishing state to MQTT. It auto-reconnects on disconnect.
+
+### 2. Home Assistant
+
+**Prerequisites:** MQTT integration must be configured in HA, connected to the same broker.
+
+Once the bridge is running, HA auto-discovers these entities:
+
+| Entity | Type | Description |
+|--------|------|-------------|
+| `sensor.kwatch_battery` | Sensor | Battery level (%) |
+| `binary_sensor.kwatch_connection` | Binary Sensor | BLE connection status |
+| `sensor.kwatch_last_response` | Sensor | Last response from watch wearer |
+
+### 3. Lovelace Card
+
+Copy `dist/kwatch-message-card.js` to your HA's `www/` directory, then add it as a resource:
+
+**Settings > Dashboards > Resources > Add Resource:**
+- URL: `/local/kwatch-message-card.js`
+- Type: JavaScript Module
+
+Add the card to a dashboard (Edit > Add Card > Manual):
 
 ```yaml
 type: custom:kwatch-message-card
-response_entity: sensor.k_watch_last_response
-battery_entity: sensor.k_watch_battery
-connection_entity: sensor.k_watch_connection
+response_entity: sensor.kwatch_last_response
+battery_entity: sensor.kwatch_battery
+connection_entity: binary_sensor.kwatch_connection
 ```
 
-The card provides a message input, send button, connection status, battery indicator, and a scrollable message history with response badges.
+## Sending Messages
 
-### Service
+### From the Lovelace card
 
-Call `kwatch.send_message` from automations, scripts, or Developer Tools:
+Type a message and hit Send. The card publishes to MQTT automatically.
+
+### From automations
 
 ```yaml
-service: kwatch.send_message
+service: mqtt.publish
 data:
-  message: "Dinner is ready"
-  title: "Home"  # optional, default: "HA"
+  topic: kwatch/command/send_message
+  payload: '{"title": "Home", "message": "Dinner is ready"}'
 ```
 
-### Automation Events
+### From Developer Tools
 
-The integration fires a `kwatch_response` event when the watch wearer responds:
+Go to Developer Tools > Services, select `mqtt.publish`, and enter the topic and payload above.
+
+## Automation Events
+
+Use the `sensor.kwatch_last_response` entity in automations:
 
 ```yaml
 automation:
   trigger:
-    platform: event
-    event_type: kwatch_response
-    event_data:
-      response: "No"
+    platform: state
+    entity_id: sensor.kwatch_last_response
+    to: "No"
   action:
     - service: notify.mobile_app
       data:
         message: "Watch wearer declined"
 ```
 
-Event data:
+## MQTT Topics
 
-| Field | Example |
-|-------|---------|
-| `device_name` | `K-WATCH` |
-| `message` | `Dinner is ready` |
-| `response` | `OK - got it` or `No` |
-| `timestamp` | `2026-03-31T14:30:00+00:00` |
+| Topic | Direction | Description |
+|-------|-----------|-------------|
+| `kwatch/bridge/status` | Bridge→HA | Bridge online/offline (LWT) |
+| `kwatch/device/connection` | Bridge→HA | Watch BLE connection status |
+| `kwatch/device/battery` | Bridge→HA | Battery level + charging state |
+| `kwatch/device/event` | Bridge→HA | Watch button events |
+| `kwatch/message/last` | Bridge→HA | Last message + response |
+| `kwatch/message/history` | Bridge→HA | Last 50 messages (retained) |
+| `kwatch/command/send_message` | HA→Bridge | Send a message to the watch |
 
-## Entities
+## Configuration
 
-| Entity | Type | Description |
-|--------|------|-------------|
-| `sensor.k_watch_last_response` | Sensor | Last response from watch wearer (OK - got it / No / Pending / No response) |
-| `sensor.k_watch_battery` | Sensor | Battery level (%) |
-| `sensor.k_watch_connection` | Sensor | BLE connection status (Connected / Disconnected) |
+The bridge is configured via environment variables:
 
-The response sensor includes a `message_history` attribute with the last 50 messages and their responses.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MQTT_BROKER` | `mqtt://homeassistant.local:1883` | MQTT broker URL |
+| `MQTT_USERNAME` | | MQTT username |
+| `MQTT_PASSWORD` | | MQTT password |
+| `DEVICE_NAME` | `K-WATCH` | BLE advertised name to scan for |
+| `MESSAGE_TIMEOUT` | `120` | Seconds before marking "No response" |
+| `BATTERY_POLL_INTERVAL` | `300` | Seconds between battery polls |
 
 ## How It Works
 
-The K-WATCH uses a proprietary BLE protocol over a custom GATT service (`56ff`). Messages are sent as multi-packet notification sequences (command `0x46`). The watch displays incoming messages on screen. When the wearer presses a button, the watch sends an event (`0x06`) back over BLE:
+The K-WATCH uses a proprietary BLE protocol over a custom GATT service. Messages are sent as multi-packet notification sequences (command `0x46`). When the wearer presses a button, the watch sends an event back:
 
-- Event code `0x02` (Take Photo) is interpreted as **OK - got it**
-- Event code `0x01` (Find Device) is interpreted as **No**
+- Event code `0x02` (Take Photo) = **OK - got it**
+- Event code `0x01` (Find Device) = **No**
 
-If no response is received within 120 seconds, the message is marked **No response**.
-
-The integration handles BLE keepalive pings (`0x3A`) automatically to maintain the connection.
+The bridge responds to keepalive pings (`0x3A`) to maintain the connection.
 
 ## Requirements
 
-- Home Assistant 2023.1.0 or newer
-- A Bluetooth adapter accessible to Home Assistant
-- A K-WATCH BLE fitness tracker
+- Raspberry Pi with Raspbian and Bluetooth
+- Node.js 20+
+- MQTT broker (e.g. Mosquitto) accessible from both the Pi and HA
+- Home Assistant with MQTT integration configured
+- K-WATCH BLE fitness tracker
 
 ## License
 
