@@ -12,7 +12,7 @@ Environment=MQTT_BROKER=mqtt://homeassistant.local:1883
 #Environment=MQTT_PASSWORD=
 Restart=always
 RestartSec=10
-User=root
+User=pi
 
 [Install]
 WantedBy=multi-user.target

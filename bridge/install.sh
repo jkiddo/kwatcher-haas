@@ -29,6 +29,10 @@ echo "Installing npm dependencies..."
 cd /opt/kwatch-bridge
 sudo npm install --production
 
+# Grant Node.js BLE access without root
+echo "Setting BLE capabilities on node binary..."
+sudo setcap cap_net_raw,cap_net_admin+eip "$(which node)"
+
 # Install systemd service
 echo "Installing systemd service..."
 sudo cp /opt/kwatch-bridge/../kwatch-bridge.service /etc/systemd/system/ 2>/dev/null || \
