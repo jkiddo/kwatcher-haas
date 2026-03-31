@@ -1,0 +1,4 @@
+node_modules/
+bridge/.env
+bridge/known-device.json
+bridge/history.json

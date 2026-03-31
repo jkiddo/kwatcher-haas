@@ -7,50 +7,60 @@ Send text messages from Home Assistant's web UI to the watch. The watch wearer r
 - **"Take Photo" button** = **OK - got it**
 - **"Find Device" button** = **No**
 
+Responses can also be sent unsolicited from the watch at any time.
+
 ## Architecture
 
 ```
-K-WATCH  <--BLE-->  Raspberry Pi (Node.js bridge)  <--MQTT-->  Home Assistant
-                                                                  └── Lovelace card
+K-WATCH  <--BLE-->  Bridge (Node.js)  <--MQTT-->  Home Assistant
+                                                      └── Lovelace card
 ```
 
-The bridge runs on a dedicated Raspberry Pi with Raspbian and communicates with HA via MQTT. HA entities are created automatically via MQTT auto-discovery.
+The bridge runs on a machine with a compatible Bluetooth adapter (macOS recommended) and communicates with HA via MQTT. HA entities are created automatically via MQTT auto-discovery.
+
+## Features
+
+- Send text messages to the watch from the HA dashboard
+- Receive OK/No responses from the watch wearer
+- Unsolicited responses (no pending message required)
+- 6-day weather forecast sync (OpenWeatherMap + WAQI air quality)
+- Time sync (with DST support)
+- Vibrate/buzz the watch remotely
+- Battery level monitoring
+- Connection status tracking
+- Message history (last 50 messages, persisted across restarts)
+- Auto-reconnect on BLE disconnect
 
 ## Setup
 
-### 1. Raspberry Pi (BLE Bridge)
-
-On a Raspberry Pi running Raspbian:
+### 1. Bridge
 
 ```bash
-git clone https://github.com/jkiddo/kwatcher-haas.git
-cd kwatcher-haas/bridge
-bash install.sh
+cd bridge
+cp .env.example .env
+# Edit .env with your MQTT credentials, location, and API keys
+npm install
+node index.js
 ```
 
-Edit the MQTT credentials:
+The `.env` file configures all credentials and settings:
 
-```bash
-sudo systemctl edit kwatch-bridge
+```env
+# MQTT
+MQTT_BROKER=mqtt://homeassistant.local:1883
+MQTT_USERNAME=your-user
+MQTT_PASSWORD=your-pass
+
+# Weather - OpenWeatherMap (https://openweathermap.org/api)
+OWM_API_KEY=your-owm-key
+OWM_LAT=55.6761
+OWM_LON=12.5683
+
+# Air Quality - WAQI (https://aqicn.org/data-platform/token/)
+WAQI_TOKEN=your-waqi-token
 ```
 
-Add:
-
-```ini
-[Service]
-Environment=MQTT_BROKER=mqtt://your-ha-ip:1883
-Environment=MQTT_USERNAME=your-user
-Environment=MQTT_PASSWORD=your-pass
-```
-
-Start the service:
-
-```bash
-sudo systemctl start kwatch-bridge
-sudo journalctl -u kwatch-bridge -f
-```
-
-The bridge will scan for a K-WATCH, connect, and start publishing state to MQTT. It auto-reconnects on disconnect.
+The bridge will scan for a K-WATCH, connect, and start publishing state to MQTT. It auto-reconnects on disconnect and persists the known device across restarts.
 
 ### 2. Home Assistant
 
@@ -63,31 +73,39 @@ Once the bridge is running, HA auto-discovers these entities:
 | `sensor.kwatch_battery` | Sensor | Battery level (%) |
 | `binary_sensor.kwatch_connection` | Binary Sensor | BLE connection status |
 | `sensor.kwatch_last_response` | Sensor | Last response from watch wearer |
+| `sensor.kwatch_last_message` | Sensor | Last sent message text |
 
 ### 3. Lovelace Card
 
 Copy `dist/kwatch-message-card.js` to your HA's `www/` directory, then add it as a resource:
 
 **Settings > Dashboards > Resources > Add Resource:**
-- URL: `/local/kwatch-message-card.js`
+- URL: `/local/kwatch-message-card.js?v=1`
 - Type: JavaScript Module
+
+When updating the card file, increment the `?v=` parameter to bust the cache.
 
 Add the card to a dashboard (Edit > Add Card > Manual):
 
 ```yaml
 type: custom:kwatch-message-card
-response_entity: sensor.kwatch_last_response
-battery_entity: sensor.kwatch_battery
-connection_entity: binary_sensor.kwatch_connection
+response_entity: sensor.k_watch_last_response
+battery_entity: sensor.k_watch_battery
+connection_entity: binary_sensor.k_watch_connection
 ```
 
-## Sending Messages
+Note: check the exact entity IDs in Developer Tools > States, as HA may adjust them.
 
-### From the Lovelace card
+The card provides:
+- **Send** - Send a text message to the watch
+- **Buzz** - Vibrate the watch
+- **Weather** - Sync 6-day weather forecast + air quality to the watch
+- **Time** - Sync current time to the watch
+- **Clear** - Clear message history
+- Message history with response badges (green/red/yellow/gray)
+- Connection status indicator and battery level
 
-Type a message and hit Send. The card publishes to MQTT automatically.
-
-### From automations
+## Sending Messages from Automations
 
 ```yaml
 service: mqtt.publish
@@ -96,13 +114,30 @@ data:
   payload: '{"title": "Home", "message": "Dinner is ready"}'
 ```
 
-### From Developer Tools
+## MQTT Commands
 
-Go to Developer Tools > Services, select `mqtt.publish`, and enter the topic and payload above.
+| Topic | Payload | Description |
+|-------|---------|-------------|
+| `kwatch/command/send_message` | `{"title":"HA","message":"..."}` | Send message to watch |
+| `kwatch/command/vibrate` | _(empty)_ | Vibrate the watch |
+| `kwatch/command/sync_weather` | _(empty)_ | Fetch and sync 6-day weather |
+| `kwatch/command/sync_time` | _(empty)_ | Sync current time |
+| `kwatch/command/clear_history` | _(empty)_ | Clear message history |
 
-## Automation Events
+## MQTT State Topics
 
-Use the `sensor.kwatch_last_response` entity in automations:
+| Topic | Retained | Description |
+|-------|----------|-------------|
+| `kwatch/bridge/status` | Yes | Bridge online/offline (LWT) |
+| `kwatch/device/connection` | Yes | Watch BLE connection status |
+| `kwatch/device/battery` | Yes | Battery level + charging state |
+| `kwatch/device/event` | No | Watch button events |
+| `kwatch/message/last` | Yes | Last message + response |
+| `kwatch/message/history` | Yes | Last 50 messages |
+
+## Automation Examples
+
+Trigger on watch response:
 
 ```yaml
 automation:
@@ -116,47 +151,40 @@ automation:
         message: "Watch wearer declined"
 ```
 
-## MQTT Topics
+Sync weather every 3 hours:
 
-| Topic | Direction | Description |
-|-------|-----------|-------------|
-| `kwatch/bridge/status` | Bridge→HA | Bridge online/offline (LWT) |
-| `kwatch/device/connection` | Bridge→HA | Watch BLE connection status |
-| `kwatch/device/battery` | Bridge→HA | Battery level + charging state |
-| `kwatch/device/event` | Bridge→HA | Watch button events |
-| `kwatch/message/last` | Bridge→HA | Last message + response |
-| `kwatch/message/history` | Bridge→HA | Last 50 messages (retained) |
-| `kwatch/command/send_message` | HA→Bridge | Send a message to the watch |
+```yaml
+automation:
+  trigger:
+    platform: time_pattern
+    hours: "/3"
+  action:
+    - service: mqtt.publish
+      data:
+        topic: kwatch/command/sync_weather
+```
 
-## Configuration
+## Bluetooth Compatibility
 
-The bridge is configured via environment variables:
+The K-WATCH firmware does not set the "BR/EDR Not Supported" BLE advertising flag, which causes compatibility issues:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MQTT_BROKER` | `mqtt://homeassistant.local:1883` | MQTT broker URL |
-| `MQTT_USERNAME` | | MQTT username |
-| `MQTT_PASSWORD` | | MQTT password |
-| `DEVICE_NAME` | `K-WATCH` | BLE advertised name to scan for |
-| `MESSAGE_TIMEOUT` | `120` | Seconds before marking "No response" |
-| `BATTERY_POLL_INTERVAL` | `300` | Seconds between battery polls |
-
-## How It Works
-
-The K-WATCH uses a proprietary BLE protocol over a custom GATT service. Messages are sent as multi-packet notification sequences (command `0x46`). When the wearer presses a button, the watch sends an event back:
-
-- Event code `0x02` (Take Photo) = **OK - got it**
-- Event code `0x01` (Find Device) = **No**
-
-The bridge responds to keepalive pings (`0x3A`) to maintain the connection.
+| Platform | Status |
+|----------|--------|
+| **macOS** (CoreBluetooth via noble) | Works |
+| **Linux** (BlueZ on HA OS) | Does not work -- BlueZ tries classic Bluetooth |
+| **Raspberry Pi 3** (onboard BCM43) | Does not work -- connection drops immediately |
+| **Raspberry Pi 4/5** | Untested, may work |
+| **Linux + USB BLE dongle** (BT 4.0+) | Should work with a compatible adapter |
 
 ## Requirements
 
-- Raspberry Pi with Raspbian and Bluetooth
-- Node.js 20+
-- MQTT broker (e.g. Mosquitto) accessible from both the Pi and HA
+- Node.js 18+
+- Machine with compatible Bluetooth adapter (macOS recommended)
+- MQTT broker (e.g. Mosquitto) accessible from both the bridge and HA
 - Home Assistant with MQTT integration configured
 - K-WATCH BLE fitness tracker
+- OpenWeatherMap API key (free tier) for weather sync
+- WAQI API token (free) for air quality data
 
 ## License
 

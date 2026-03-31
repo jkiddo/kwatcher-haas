@@ -51,16 +51,33 @@ class HistoryManager {
     this._publishLast();
   }
 
+  clear() {
+    this._clearTimeout();
+    this._history = [];
+    this._save();
+    this._publishHistory();
+    this._publishLast();
+  }
+
   resolveMessage(response) {
     this._clearTimeout();
+    const now = new Date().toISOString();
 
     if (this._history.length > 0 && this._history[0].response === null) {
+      // Resolve the pending message
       this._history[0].response = response;
-      this._history[0].responded_at = new Date().toISOString();
+      this._history[0].responded_at = now;
       this._save();
       this._publishHistory();
-      this._publishLast();
     }
+
+    // Always publish the latest response, even if unsolicited
+    this._mqtt.publishRetained(`message/last`, JSON.stringify({
+      message: this._history.length > 0 ? this._history[0].message : null,
+      response,
+      sent_at: this._history.length > 0 ? this._history[0].sent_at : null,
+      responded_at: now,
+    }));
   }
 
   _onTimeout() {

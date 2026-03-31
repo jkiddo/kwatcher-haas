@@ -177,6 +177,60 @@ class KWatchMessageCard extends HTMLElement {
           color: var(--secondary-text-color);
           font-size: 0.9em;
         }
+        .kw-history-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .kw-clear-btn {
+          background: none;
+          border: none;
+          color: var(--secondary-text-color);
+          font-size: 0.8em;
+          cursor: pointer;
+          padding: 0;
+        }
+        .kw-clear-btn:hover { color: var(--primary-text-color); }
+        .kw-vibrate-btn {
+          padding: 8px 12px;
+          border: 1px solid var(--divider-color, #e0e0e0);
+          border-radius: 8px;
+          background: var(--card-background-color, #fff);
+          color: var(--primary-text-color);
+          cursor: pointer;
+          font-size: 0.95em;
+          white-space: nowrap;
+        }
+        .kw-vibrate-btn:hover { opacity: 0.9; }
+        .kw-vibrate-btn:disabled, .kw-weather-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        .kw-weather-btn {
+          padding: 8px 12px;
+          border: 1px solid var(--divider-color, #e0e0e0);
+          border-radius: 8px;
+          background: var(--card-background-color, #fff);
+          color: var(--primary-text-color);
+          cursor: pointer;
+          font-size: 0.95em;
+          white-space: nowrap;
+        }
+        .kw-weather-btn:hover, .kw-time-btn:hover { opacity: 0.9; }
+        .kw-time-btn {
+          padding: 8px 12px;
+          border: 1px solid var(--divider-color, #e0e0e0);
+          border-radius: 8px;
+          background: var(--card-background-color, #fff);
+          color: var(--primary-text-color);
+          cursor: pointer;
+          font-size: 0.95em;
+          white-space: nowrap;
+        }
+        .kw-time-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
       </style>
       <div class="kw-header">
         <span class="kw-title">${this._escapeHtml(this._config.title)}</span>
@@ -188,9 +242,15 @@ class KWatchMessageCard extends HTMLElement {
       <div class="kw-input-area">
         <input type="text" class="kw-message-input" placeholder="Type a message..." />
         <button class="kw-send-btn">Send</button>
+        <button class="kw-vibrate-btn" title="Vibrate watch">Buzz</button>
+        <button class="kw-weather-btn" title="Sync weather to watch">Weather</button>
+        <button class="kw-time-btn" title="Sync time to watch">Time</button>
       </div>
       <div class="kw-history">
-        <div class="kw-history-label">Messages</div>
+        <div class="kw-history-header">
+          <div class="kw-history-label">Messages</div>
+          <button class="kw-clear-btn">Clear</button>
+        </div>
         <div class="kw-history-list"></div>
       </div>
     `;
@@ -202,6 +262,34 @@ class KWatchMessageCard extends HTMLElement {
     btn.addEventListener("click", () => this._sendMessage());
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") this._sendMessage();
+    });
+
+    this.querySelector(".kw-vibrate-btn").addEventListener("click", () => {
+      this._hass.callService("mqtt", "publish", {
+        topic: "kwatch/command/vibrate",
+        payload: "",
+      });
+    });
+
+    this.querySelector(".kw-weather-btn").addEventListener("click", () => {
+      this._hass.callService("mqtt", "publish", {
+        topic: "kwatch/command/sync_weather",
+        payload: "",
+      });
+    });
+
+    this.querySelector(".kw-time-btn").addEventListener("click", () => {
+      this._hass.callService("mqtt", "publish", {
+        topic: "kwatch/command/sync_time",
+        payload: "",
+      });
+    });
+
+    this.querySelector(".kw-clear-btn").addEventListener("click", () => {
+      this._hass.callService("mqtt", "publish", {
+        topic: "kwatch/command/clear_history",
+        payload: "",
+      });
     });
   }
 
@@ -239,10 +327,15 @@ class KWatchMessageCard extends HTMLElement {
       batteryEl.textContent = `${batteryState.state}%`;
     }
 
+    const disconnected = !connectionState || connectionState.state !== "on";
     const btn = this.querySelector(".kw-send-btn");
-    if (btn && connectionState) {
-      btn.disabled = connectionState.state !== "on";
-    }
+    if (btn) btn.disabled = disconnected;
+    const buzzBtn = this.querySelector(".kw-vibrate-btn");
+    if (buzzBtn) buzzBtn.disabled = disconnected;
+    const weatherBtn = this.querySelector(".kw-weather-btn");
+    if (weatherBtn) weatherBtn.disabled = disconnected;
+    const timeBtn = this.querySelector(".kw-time-btn");
+    if (timeBtn) timeBtn.disabled = disconnected;
 
     const historyList = this.querySelector(".kw-history-list");
     if (!historyList || !responseState) return;

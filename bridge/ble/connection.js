@@ -187,10 +187,10 @@ class BleConnection extends EventEmitter {
     const scanAddress = peripheral.address || peripheral.id;
     console.log(`[BLE] Connecting to ${name} (${scanAddress}) addressType=${peripheral.addressType}...`);
 
-    // Force random address type -- the K-WATCH uses a locally-administered
-    // address (02:xx) but may be reported as 'unknown' or 'public' by noble.
-    if (peripheral.addressType !== 'random') {
-      console.log(`[BLE] Overriding addressType from "${peripheral.addressType}" to "random"`);
+    // On Linux, force random address type for the K-WATCH's locally-administered address.
+    // On macOS, CoreBluetooth handles address types internally -- don't touch it.
+    if (process.platform === 'linux' && peripheral.addressType === 'public') {
+      console.log(`[BLE] Overriding addressType to "random" (Linux)`);
       peripheral.addressType = 'random';
     }
 
@@ -217,18 +217,10 @@ class BleConnection extends EventEmitter {
       if (!this._shuttingDown) this._scheduleReconnect();
     });
 
-    // Let the connection stabilize before GATT discovery
-    await this._sleep(1000);
-    console.log('[BLE] Discovering services (56ff only)...');
+    console.log('[BLE] Connected, discovering services...');
 
     try {
-      // Discover only the service we need instead of all services.
-      // Full discovery overwhelms the watch and causes disconnects.
-      const SVC_UUID = '000056ff00001000800000805f9b34fb';
-      const { characteristics } = await peripheral.discoverSomeServicesAndCharacteristicsAsync(
-        [SVC_UUID, '56ff'],
-        []
-      );
+      const { characteristics } = await peripheral.discoverAllServicesAndCharacteristicsAsync();
 
       for (const c of characteristics) {
         if (uuidMatch(c.uuid, TX_UUIDS)) this._txChar = c;

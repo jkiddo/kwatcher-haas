@@ -7,7 +7,8 @@
 
 const config = require('./config');
 const BleConnection = require('./ble/connection');
-const { encodeTimeSync, encodeBatteryRequest, encodeNotification } = require('./ble/protocol');
+const { encodeTimeSync, encodeBatteryRequest, encodeNotification, encodeVibrate } = require('./ble/protocol');
+const { fetchAndEncodeWeather } = require('./weather');
 const MqttBridge = require('./mqtt/client');
 const { publishDiscovery } = require('./mqtt/discovery');
 const HistoryManager = require('./mqtt/history');
@@ -89,6 +90,42 @@ mqtt.on('command', async (topic, payload) => {
       history.addMessage(title, message);
     } catch (err) {
       console.error(`[BRIDGE] Send message failed: ${err.message}`);
+    }
+  } else if (topic.endsWith('clear_history')) {
+    console.log('[BRIDGE] Clearing message history');
+    history.clear();
+  } else if (topic.endsWith('vibrate')) {
+    if (!ble.connected) {
+      console.log('[BRIDGE] Cannot vibrate: watch not connected');
+      return;
+    }
+    console.log('[BRIDGE] Vibrating watch');
+    for (const pkt of encodeVibrate()) {
+      await ble.write(pkt);
+      await sleep(300);
+    }
+  } else if (topic.endsWith('sync_time')) {
+    if (!ble.connected) {
+      console.log('[BRIDGE] Cannot sync time: watch not connected');
+      return;
+    }
+    console.log('[BRIDGE] Syncing time to watch');
+    await ble.write(encodeTimeSync());
+  } else if (topic.endsWith('sync_weather')) {
+    if (!ble.connected) {
+      console.log('[BRIDGE] Cannot sync weather: watch not connected');
+      return;
+    }
+    try {
+      console.log('[BRIDGE] Fetching weather from OpenWeatherMap...');
+      const packets = await fetchAndEncodeWeather(config);
+      console.log(`[BRIDGE] Syncing ${packets.length} days of weather to watch`);
+      for (const pkt of packets) {
+        await ble.write(pkt);
+        await sleep(config.interPacketDelay);
+      }
+    } catch (err) {
+      console.error(`[BRIDGE] Weather sync failed: ${err.message}`);
     }
   }
 });
