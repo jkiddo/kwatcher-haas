@@ -12,7 +12,6 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN
-from .coordinator import KWatchCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,6 +38,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up K-Watch Messenger from a config entry."""
+    from .coordinator import KWatchCoordinator  # noqa: E402
+
     coordinator = KWatchCoordinator(hass, entry)
     await coordinator.async_setup()
 
@@ -53,7 +54,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             title = call.data.get("title", "HA")
 
             # Use the first (or only) configured device
-            coordinators: dict[str, KWatchCoordinator] = hass.data[DOMAIN]
+            coordinators = hass.data[DOMAIN]
             if not coordinators:
                 _LOGGER.error("No K-Watch devices configured")
                 return
@@ -71,7 +72,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a K-Watch Messenger config entry."""
-    coordinator: KWatchCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = hass.data[DOMAIN][entry.entry_id]
     coordinator._cancel_timeout()
     await coordinator.ble_client.disconnect()
 
