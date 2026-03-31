@@ -48,14 +48,13 @@ class KWatchBleClient:
         self._on_connection_change = on_connection_change
 
         self._client: BleakClient | None = None
-        self._connected = False
         self._reconnect_task: asyncio.Task | None = None
         self._reconnect_delay = RECONNECT_BASE_DELAY
         self._shutting_down = False
 
     @property
     def connected(self) -> bool:
-        return self._connected
+        return self._client is not None and self._client.is_connected
 
     async def connect(self) -> None:
         """Establish BLE connection and subscribe to notifications."""
@@ -78,12 +77,10 @@ class KWatchBleClient:
 
             await self._client.start_notify(RX_CHAR_UUID, self._on_notification)
 
-            self._connected = True
             self._reconnect_delay = RECONNECT_BASE_DELAY
             self._on_connection_change(True)
             _LOGGER.info("Connected to K-WATCH %s", self._address)
 
-            # Initial handshake: time sync + battery request
             await self._write(encode_time_sync())
             await asyncio.sleep(INTER_PACKET_DELAY)
             await self._write(encode_battery_request())
@@ -107,12 +104,11 @@ class KWatchBleClient:
                 await self._client.disconnect()
             except BleakError:
                 pass
-        self._connected = False
         self._client = None
 
     async def send_message(self, title: str, body: str, type_id: int = 1) -> None:
         """Send a notification message to the watch as a multi-packet sequence."""
-        if not self._client or not self._client.is_connected:
+        if not self.connected:
             raise ConnectionError("Not connected to K-WATCH")
 
         packets = encode_notification(title, body, type_id)
@@ -122,7 +118,7 @@ class KWatchBleClient:
 
     async def _write(self, data: bytes) -> None:
         """Write a packet to the TX characteristic."""
-        if not self._client or not self._client.is_connected:
+        if not self.connected:
             raise ConnectionError("Not connected to K-WATCH")
         await self._client.write_gatt_char(TX_CHAR_UUID, data, response=True)
 
@@ -130,9 +126,8 @@ class KWatchBleClient:
         """Handle incoming BLE notification from the watch."""
         parsed = parse_response(data)
 
-        # Keepalive must be answered immediately to prevent disconnection
         if parsed["type"] == "keepalive":
-            asyncio.ensure_future(self._respond_keepalive())
+            self._hass.async_create_task(self._respond_keepalive())
             return
 
         self._on_data(parsed)
@@ -147,7 +142,6 @@ class KWatchBleClient:
     def _on_disconnect(self, _client: BleakClient) -> None:
         """Handle unexpected disconnection."""
         _LOGGER.info("K-WATCH %s disconnected", self._address)
-        self._connected = False
         self._client = None
         self._on_connection_change(False)
         if not self._shutting_down:
@@ -158,17 +152,20 @@ class KWatchBleClient:
         if self._shutting_down:
             return
         if self._reconnect_task and not self._reconnect_task.done():
-            return  # already scheduled
+            return
 
         delay = self._reconnect_delay
         self._reconnect_delay = min(
             self._reconnect_delay * 2, RECONNECT_MAX_DELAY
         )
         _LOGGER.debug("Scheduling reconnect in %ds", delay)
-        self._reconnect_task = asyncio.ensure_future(self._reconnect(delay))
+        self._reconnect_task = self._hass.async_create_task(self._reconnect(delay))
 
     async def _reconnect(self, delay: float) -> None:
         """Wait and then attempt to reconnect."""
-        await asyncio.sleep(delay)
-        if not self._shutting_down:
-            await self.connect()
+        try:
+            await asyncio.sleep(delay)
+            if not self._shutting_down:
+                await self.connect()
+        finally:
+            self._reconnect_task = None

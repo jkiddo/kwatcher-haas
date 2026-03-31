@@ -32,6 +32,13 @@ RESPONSE_PENDING = "Pending"
 RESPONSE_TIMEOUT = "No response"
 RESPONSE_IDLE = "Idle"
 
+# Connection states
+STATE_CONNECTED = "Connected"
+STATE_DISCONNECTED = "Disconnected"
+
+# Default notification title
+DEFAULT_NOTIFICATION_TITLE = "HA"
+
 # Timing
 DEFAULT_MESSAGE_TIMEOUT = 120  # seconds
 RECONNECT_BASE_DELAY = 5  # seconds

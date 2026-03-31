@@ -4,6 +4,13 @@
  * Send messages to a K-WATCH and view responses.
  */
 
+// Response labels — must match const.py
+const RESPONSE_OK = "OK - got it";
+const RESPONSE_NO = "No";
+const RESPONSE_TIMEOUT = "No response";
+const STATE_CONNECTED = "Connected";
+const DEFAULT_TITLE = "HA";
+
 class KWatchMessageCard extends HTMLElement {
   static getConfigElement() {
     return document.createElement("kwatch-message-card-editor");
@@ -18,10 +25,23 @@ class KWatchMessageCard extends HTMLElement {
   }
 
   set hass(hass) {
+    const oldHass = this._hass;
     this._hass = hass;
     if (!this._rendered) {
       this._render();
       this._rendered = true;
+    }
+    // Only update DOM if our entities actually changed
+    if (
+      oldHass &&
+      oldHass.states[this._config.response_entity] ===
+        hass.states[this._config.response_entity] &&
+      oldHass.states[this._config.battery_entity] ===
+        hass.states[this._config.battery_entity] &&
+      oldHass.states[this._config.connection_entity] ===
+        hass.states[this._config.connection_entity]
+    ) {
+      return;
     }
     this._update();
   }
@@ -160,7 +180,7 @@ class KWatchMessageCard extends HTMLElement {
         }
       </style>
       <div class="kw-header">
-        <span class="kw-title">${this._config.title}</span>
+        <span class="kw-title">${this._escapeHtml(this._config.title)}</span>
         <div class="kw-status">
           <span class="kw-battery"></span>
           <span class="kw-dot disconnected"></span>
@@ -177,7 +197,6 @@ class KWatchMessageCard extends HTMLElement {
     `;
     this.appendChild(card);
 
-    // Event listeners
     const input = this.querySelector(".kw-message-input");
     const btn = this.querySelector(".kw-send-btn");
 
@@ -194,7 +213,7 @@ class KWatchMessageCard extends HTMLElement {
 
     this._hass.callService("kwatch", "send_message", {
       message: message,
-      title: "HA",
+      title: DEFAULT_TITLE,
     });
     input.value = "";
   }
@@ -210,31 +229,26 @@ class KWatchMessageCard extends HTMLElement {
       ? this._hass.states[this._config.connection_entity]
       : null;
 
-    // Update connection dot
     const dot = this.querySelector(".kw-dot");
     if (dot && connectionState) {
-      const connected = connectionState.state === "Connected";
+      const connected = connectionState.state === STATE_CONNECTED;
       dot.className = `kw-dot ${connected ? "connected" : "disconnected"}`;
     }
 
-    // Update battery
     const batteryEl = this.querySelector(".kw-battery");
     if (batteryEl && batteryState && batteryState.state !== "unknown") {
       batteryEl.textContent = `${batteryState.state}%`;
     }
 
-    // Update send button state
     const btn = this.querySelector(".kw-send-btn");
     if (btn && connectionState) {
-      btn.disabled = connectionState.state !== "Connected";
+      btn.disabled = connectionState.state !== STATE_CONNECTED;
     }
 
-    // Update history
     const historyList = this.querySelector(".kw-history-list");
     if (!historyList || !responseState) return;
 
-    const history =
-      responseState.attributes.message_history || [];
+    const history = responseState.attributes.message_history || [];
 
     if (history.length === 0) {
       historyList.innerHTML = '<div class="kw-empty">No messages yet</div>';
@@ -254,7 +268,7 @@ class KWatchMessageCard extends HTMLElement {
           <div class="kw-msg">
             <div>
               <div class="kw-msg-text">${this._escapeHtml(entry.message || "")}</div>
-              <div class="kw-msg-time">${time}</div>
+              <div class="kw-msg-time">${this._escapeHtml(time)}</div>
             </div>
             ${badge}
           </div>
@@ -265,18 +279,21 @@ class KWatchMessageCard extends HTMLElement {
 
   _badgeFor(response) {
     if (!response) return '<span class="kw-badge pending">Pending</span>';
-    if (response === "OK - got it")
-      return '<span class="kw-badge ok">OK - got it</span>';
-    if (response === "No") return '<span class="kw-badge no">No</span>';
-    if (response === "No response")
-      return '<span class="kw-badge timeout">No response</span>';
+    if (response === RESPONSE_OK)
+      return `<span class="kw-badge ok">${this._escapeHtml(RESPONSE_OK)}</span>`;
+    if (response === RESPONSE_NO)
+      return `<span class="kw-badge no">${this._escapeHtml(RESPONSE_NO)}</span>`;
+    if (response === RESPONSE_TIMEOUT)
+      return `<span class="kw-badge timeout">${this._escapeHtml(RESPONSE_TIMEOUT)}</span>`;
     return `<span class="kw-badge timeout">${this._escapeHtml(response)}</span>`;
   }
 
   _escapeHtml(text) {
-    const div = document.createElement("div");
-    div.textContent = text;
-    return div.innerHTML;
+    return text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 }
 

@@ -9,12 +9,18 @@ from homeassistant.components.sensor import (
     SensorEntity,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_DEVICE_ADDRESS, CONF_DEVICE_NAME, DOMAIN
+from .const import (
+    CONF_DEVICE_ADDRESS,
+    CONF_DEVICE_NAME,
+    DOMAIN,
+    STATE_CONNECTED,
+    STATE_DISCONNECTED,
+)
 from .coordinator import KWatchCoordinator
 
 
@@ -37,12 +43,13 @@ class KWatchBaseSensor(CoordinatorEntity[KWatchCoordinator], SensorEntity):
     """Base class for K-Watch sensors."""
 
     _attr_has_entity_name = True
+    _unique_id_suffix: str = ""
 
     def __init__(
         self, coordinator: KWatchCoordinator, entry: ConfigEntry
     ) -> None:
         super().__init__(coordinator)
-        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}{self._unique_id_suffix}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.data[CONF_DEVICE_ADDRESS])},
             name=entry.data.get(CONF_DEVICE_NAME, "K-WATCH"),
@@ -56,12 +63,7 @@ class KWatchLastResponseSensor(KWatchBaseSensor):
 
     _attr_name = "Last Response"
     _attr_icon = "mdi:message-reply-text"
-
-    def __init__(
-        self, coordinator: KWatchCoordinator, entry: ConfigEntry
-    ) -> None:
-        super().__init__(coordinator, entry)
-        self._attr_unique_id = f"{entry.entry_id}_last_response"
+    _unique_id_suffix = "_last_response"
 
     @property
     def native_value(self) -> str | None:
@@ -84,12 +86,7 @@ class KWatchBatterySensor(KWatchBaseSensor):
     _attr_name = "Battery"
     _attr_device_class = SensorDeviceClass.BATTERY
     _attr_native_unit_of_measurement = "%"
-
-    def __init__(
-        self, coordinator: KWatchCoordinator, entry: ConfigEntry
-    ) -> None:
-        super().__init__(coordinator, entry)
-        self._attr_unique_id = f"{entry.entry_id}_battery"
+    _unique_id_suffix = "_battery"
 
     @property
     def native_value(self) -> int | None:
@@ -108,18 +105,12 @@ class KWatchConnectionSensor(KWatchBaseSensor):
 
     _attr_name = "Connection"
     _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = ["Connected", "Disconnected"]
-    _attr_icon = "mdi:bluetooth-connect"
-
-    def __init__(
-        self, coordinator: KWatchCoordinator, entry: ConfigEntry
-    ) -> None:
-        super().__init__(coordinator, entry)
-        self._attr_unique_id = f"{entry.entry_id}_connection"
+    _attr_options = [STATE_CONNECTED, STATE_DISCONNECTED]
+    _unique_id_suffix = "_connection"
 
     @property
     def native_value(self) -> str:
-        return "Connected" if self.coordinator.data.get("connected") else "Disconnected"
+        return STATE_CONNECTED if self.coordinator.data.get("connected") else STATE_DISCONNECTED
 
     @property
     def icon(self) -> str:

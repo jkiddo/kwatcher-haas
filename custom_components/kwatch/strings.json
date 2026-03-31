@@ -11,6 +11,14 @@
       "bluetooth_confirm": {
         "title": "Confirm K-Watch",
         "description": "Do you want to set up {name}?"
+      },
+      "manual": {
+        "title": "Manual K-Watch Setup",
+        "description": "No K-Watch devices were discovered. Enter the BLE MAC address manually.",
+        "data": {
+          "device_address": "MAC Address (e.g. AA:BB:CC:DD:EE:FF)",
+          "device_name": "Device Name"
+        }
       }
     },
     "error": {

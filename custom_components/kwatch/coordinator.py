@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util.dt import utcnow
 
 from .ble_client import KWatchBleClient
 from .const import (
@@ -16,7 +17,6 @@ from .const import (
     DEFAULT_MESSAGE_TIMEOUT,
     DOMAIN,
     MAX_HISTORY_ENTRIES,
-    RESPONSE_IDLE,
     RESPONSE_NO,
     RESPONSE_OK,
     RESPONSE_PENDING,
@@ -24,6 +24,17 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+_INITIAL_DATA: dict[str, Any] = {
+    "battery_level": None,
+    "battery_charging": None,
+    "connected": False,
+    "last_message": None,
+    "last_message_time": None,
+    "last_response": None,
+    "last_response_time": None,
+    "message_history": [],
+}
 
 
 class KWatchCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -34,22 +45,13 @@ class KWatchCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             hass,
             _LOGGER,
             name=entry.title,
-            update_interval=None,  # Push-based, no polling
+            update_interval=None,
         )
         self.entry = entry
         self._address = entry.data[CONF_DEVICE_ADDRESS]
-        self._timeout_handle: Any | None = None
+        self._cancel_timeout: CALLBACK_TYPE | None = None
 
-        self.data: dict[str, Any] = {
-            "battery_level": None,
-            "battery_charging": None,
-            "connected": False,
-            "last_message": None,
-            "last_message_time": None,
-            "last_response": RESPONSE_IDLE,
-            "last_response_time": None,
-            "message_history": [],
-        }
+        self.data: dict[str, Any] = {**_INITIAL_DATA, "message_history": []}
 
         self.ble_client = KWatchBleClient(
             hass,
@@ -62,27 +64,41 @@ class KWatchCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Start the BLE connection."""
         await self.ble_client.connect()
 
+    async def async_shutdown(self) -> None:
+        """Clean up timeout and BLE connection."""
+        if self._cancel_timeout:
+            self._cancel_timeout()
+            self._cancel_timeout = None
+        await self.ble_client.disconnect()
+
     @callback
     def _handle_data(self, parsed: dict) -> None:
         """Handle parsed BLE data from the watch."""
-        data = {**self.data}
-
         if parsed["type"] == "battery":
+            if (
+                self.data["battery_level"] == parsed["level"]
+                and self.data["battery_charging"] == parsed["charging"]
+            ):
+                return
+            data = {**self.data}
             data["battery_level"] = parsed["level"]
             data["battery_charging"] = parsed["charging"]
+            self.async_set_updated_data(data)
 
         elif parsed["type"] == "event":
             action = parsed.get("action")
             if action in ("ok", "no"):
+                data = {**self.data, "message_history": list(self.data["message_history"])}
                 self._resolve_pending_message(
                     data, RESPONSE_OK if action == "ok" else RESPONSE_NO
                 )
-
-        self.async_set_updated_data(data)
+                self.async_set_updated_data(data)
 
     @callback
     def _handle_connection_change(self, connected: bool) -> None:
         """Handle BLE connection state changes."""
+        if self.data.get("connected") == connected:
+            return
         data = {**self.data}
         data["connected"] = connected
         self.async_set_updated_data(data)
@@ -91,10 +107,9 @@ class KWatchCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Send a message to the watch and track it."""
         await self.ble_client.send_message(title, body)
 
-        now = datetime.now(timezone.utc)
-        data = {**self.data}
+        now = utcnow()
+        data = {**self.data, "message_history": list(self.data["message_history"])}
 
-        # If there was a pending message, mark it as timed out
         if data["last_response"] == RESPONSE_PENDING:
             self._resolve_pending_message(data, RESPONSE_TIMEOUT)
 
@@ -103,40 +118,37 @@ class KWatchCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data["last_response"] = RESPONSE_PENDING
         data["last_response_time"] = None
 
-        # Add to history
-        history = list(data["message_history"])
-        history.insert(0, {
+        data["message_history"].insert(0, {
             "message": body,
             "title": title,
             "sent_at": now.isoformat(),
             "response": None,
             "responded_at": None,
         })
-        data["message_history"] = history[:MAX_HISTORY_ENTRIES]
+        data["message_history"] = data["message_history"][:MAX_HISTORY_ENTRIES]
 
         self.async_set_updated_data(data)
 
-        # Schedule timeout
-        self._cancel_timeout()
-        self._timeout_handle = self.hass.loop.call_later(
-            DEFAULT_MESSAGE_TIMEOUT, self._on_message_timeout
+        if self._cancel_timeout:
+            self._cancel_timeout()
+        self._cancel_timeout = async_call_later(
+            self.hass, DEFAULT_MESSAGE_TIMEOUT, self._on_message_timeout
         )
 
     def _resolve_pending_message(self, data: dict, response: str) -> None:
         """Resolve the current pending message with a response."""
-        self._cancel_timeout()
-        now = datetime.now(timezone.utc)
+        if self._cancel_timeout:
+            self._cancel_timeout()
+            self._cancel_timeout = None
 
+        now = utcnow()
         data["last_response"] = response
         data["last_response_time"] = now.isoformat()
 
-        # Update the most recent history entry
-        history = list(data["message_history"])
+        history = data["message_history"]
         if history and history[0]["response"] is None:
             history[0] = {**history[0], "response": response, "responded_at": now.isoformat()}
-            data["message_history"] = history
 
-        # Fire HA event for automations
         self.hass.bus.async_fire(
             f"{DOMAIN}_response",
             {
@@ -148,16 +160,11 @@ class KWatchCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     @callback
-    def _on_message_timeout(self) -> None:
+    def _on_message_timeout(self, _now: Any) -> None:
         """Handle message response timeout."""
+        self._cancel_timeout = None
         if self.data.get("last_response") != RESPONSE_PENDING:
             return
-        data = {**self.data}
+        data = {**self.data, "message_history": list(self.data["message_history"])}
         self._resolve_pending_message(data, RESPONSE_TIMEOUT)
         self.async_set_updated_data(data)
-
-    def _cancel_timeout(self) -> None:
-        """Cancel any pending message timeout."""
-        if self._timeout_handle is not None:
-            self._timeout_handle.cancel()
-            self._timeout_handle = None
