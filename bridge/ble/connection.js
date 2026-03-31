@@ -200,10 +200,9 @@ class BleConnection extends EventEmitter {
     }
 
     this._peripheral = peripheral;
-    console.log('[BLE] Connected, discovering services...');
 
-    peripheral.once('disconnect', () => {
-      console.log('[BLE] Disconnected');
+    peripheral.once('disconnect', (reason) => {
+      console.log(`[BLE] Disconnected (reason: ${reason})`);
       this._connected = false;
       this._txChar = null;
       this._rxChar = null;
@@ -211,8 +210,18 @@ class BleConnection extends EventEmitter {
       if (!this._shuttingDown) this._scheduleReconnect();
     });
 
+    // Let the connection stabilize before GATT discovery
+    await this._sleep(1000);
+    console.log('[BLE] Discovering services (56ff only)...');
+
     try {
-      const { characteristics } = await peripheral.discoverAllServicesAndCharacteristicsAsync();
+      // Discover only the service we need instead of all services.
+      // Full discovery overwhelms the watch and causes disconnects.
+      const SVC_UUID = '000056ff00001000800000805f9b34fb';
+      const { characteristics } = await peripheral.discoverSomeServicesAndCharacteristicsAsync(
+        [SVC_UUID, '56ff'],
+        []
+      );
 
       for (const c of characteristics) {
         if (uuidMatch(c.uuid, TX_UUIDS)) this._txChar = c;
