@@ -35,8 +35,8 @@ sudo setcap cap_net_raw,cap_net_admin+eip "$(which node)"
 
 # Install systemd service
 echo "Installing systemd service..."
-sudo cp /opt/kwatch-bridge/../kwatch-bridge.service /etc/systemd/system/ 2>/dev/null || \
-    sudo cp "$(dirname "$0")/kwatch-bridge.service" /etc/systemd/system/
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+sudo cp "$SCRIPT_DIR/kwatch-bridge.service" /etc/systemd/system/
 
 sudo systemctl daemon-reload
 sudo systemctl enable kwatch-bridge
