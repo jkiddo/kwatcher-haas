@@ -67,6 +67,26 @@ class HistoryManager {
     this._publishLast(response);
   }
 
+  /** Returns true if the most recent message is still awaiting a response. */
+  hasPendingMessage() {
+    return this._history.length > 0 && this._history[0].response === null;
+  }
+
+  /** Update the message timeout (in seconds) and restart any active timer. */
+  setMessageTimeout(seconds) {
+    this._config.messageTimeout = seconds;
+    if (this._timeoutTimer && this.hasPendingMessage()) {
+      this._clearTimeout();
+      const elapsed = Date.now() - new Date(this._history[0].sent_at).getTime();
+      const remaining = (seconds * 1000) - elapsed;
+      if (remaining <= 0) {
+        this._onTimeout();
+      } else {
+        this._timeoutTimer = setTimeout(() => this._onTimeout(), remaining);
+      }
+    }
+  }
+
   _expirePending() {
     if (this._history.length > 0 && this._history[0].response === null) {
       this._history[0].response = RESPONSE_TIMEOUT;

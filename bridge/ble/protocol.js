@@ -12,11 +12,15 @@ const CMD_VIBRATE = 0x04;
 const CMD_TRIGGER_LOST = 0x05;
 const CMD_BATTERY = 0x0b;
 const CMD_NOTIFICATION = 0x12;
+const CMD_HEART_RATE_START = 0x14;
+const CMD_HEART_RATE_STOP = 0x15;
 const CMD_WEATHER = 0x22;
 const CMD_KEEPALIVE = 0x3a;
 
 const RESP_EVENT = 0x06;
 const RESP_BATTERY = 0x0b;
+const RESP_HEART_RATE = 0x14;
+const RESP_SENSOR_DATA = 0x24;
 const RESP_KEEPALIVE = 0x3a;
 
 const EVENT_FIND_PHONE = 0x01;
@@ -124,11 +128,27 @@ function parseResponse(data) {
     const eventCode = data[1];
     if (eventCode === EVENT_TAKE_PHOTO) return { type: 'event', eventCode, action: 'ok' };
     if (eventCode === EVENT_FIND_PHONE) return { type: 'event', eventCode, action: 'no' };
+    // Background heart rate from periodic auto-measurements (values 30-220)
+    if (eventCode >= 30 && eventCode <= 220) return { type: 'heart_rate', hr: eventCode };
     return { type: 'event', eventCode, action: 'other' };
   }
 
   if (respId === RESP_BATTERY) {
     return { type: 'battery', level: data[1], charging: !!data[2] };
+  }
+
+  // Live heart rate response: byte 5 = BPM
+  if (respId === RESP_HEART_RATE) {
+    const hr = data[5];
+    if (hr > 0 && hr < 250) return { type: 'heart_rate', hr };
+    return { type: 'unknown' };
+  }
+
+  // Multi-sensor data: byte 1 = HR
+  if (respId === RESP_SENSOR_DATA) {
+    const hr = data[1] & 0xFF;
+    if (hr > 0 && hr < 250) return { type: 'heart_rate', hr };
+    return { type: 'unknown' };
   }
 
   if (respId === RESP_KEEPALIVE) {
@@ -203,6 +223,21 @@ function encodeWeather(w) {
   return pkt;
 }
 
+/** Start live heart rate measurement. @returns {Buffer} */
+function encodeHeartRateStart() {
+  const pkt = Buffer.alloc(PACKET_SIZE);
+  pkt[0] = CMD_HEART_RATE_START;
+  pkt[1] = 0x01;
+  return pkt;
+}
+
+/** Stop live heart rate measurement. @returns {Buffer} */
+function encodeHeartRateStop() {
+  const pkt = Buffer.alloc(PACKET_SIZE);
+  pkt[0] = CMD_HEART_RATE_STOP;
+  return pkt;
+}
+
 /**
  * Encode a vibration command. Sends both 0x05 (trigger lost) and 0x04 (vibrate).
  * @param {number} [intensity=10] - Vibration intensity (0-10)
@@ -227,6 +262,8 @@ module.exports = {
   encodeTimeSync,
   encodeKeepaliveResponse,
   encodeBatteryRequest,
+  encodeHeartRateStart,
+  encodeHeartRateStop,
   encodeWeather,
   encodeVibrate,
   parseResponse,

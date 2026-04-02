@@ -35,9 +35,17 @@ module.exports = {
   // Timing
   reconnectBaseDelay: parseInt(process.env.RECONNECT_BASE_DELAY, 10) || 5,
   reconnectMaxDelay: parseInt(process.env.RECONNECT_MAX_DELAY, 10) || 300,
-  messageTimeout: parseInt(process.env.MESSAGE_TIMEOUT, 10) || 120,
+  messageTimeout: parseInt(process.env.MESSAGE_TIMEOUT, 10) || 180,
   interPacketDelay: parseInt(process.env.INTER_PACKET_DELAY, 10) || 50,
   batteryPollInterval: parseInt(process.env.BATTERY_POLL_INTERVAL, 10) || 300,
+
+  // Unsolicited event timeout (minutes) — events after this are sent as phone notifications
+  unsolicitedTimeout: parseFloat(process.env.UNSOLICITED_TIMEOUT) || 3,
+
+  // Home Assistant (for phone notifications)
+  haUrl: process.env.HA_URL || 'http://homeassistant.local:8123',
+  haToken: process.env.HA_TOKEN || '',
+  notifyService: process.env.HA_NOTIFY_SERVICE || 'mobile_app_pixel_10_pro_xl',
 
   // Weather
   owmApiKey: process.env.OWM_API_KEY || '',
@@ -48,5 +56,6 @@ module.exports = {
   // Persistence
   knownDeviceFile: process.env.KNOWN_DEVICE_FILE || path.join(__dirname, 'known-device.json'),
   historyFile: process.env.HISTORY_FILE || path.join(__dirname, 'history.json'),
+  settingsFile: process.env.SETTINGS_FILE || path.join(__dirname, 'settings.json'),
   maxHistoryEntries: 50,
 };

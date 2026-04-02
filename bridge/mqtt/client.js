@@ -46,7 +46,10 @@ class MqttBridge extends EventEmitter {
         this._client.publish(
           `${this._baseTopic}/bridge/status`, 'online', { retain: true }
         );
-        this._client.subscribe(`${this._baseTopic}/command/#`, (err) => {
+        this._client.subscribe([
+          `${this._baseTopic}/command/#`,
+          `${this._baseTopic}/config/+/set`,
+        ], (err) => {
           if (err) console.error(`[MQTT] Subscribe error: ${err.message}`);
         });
         resolve();

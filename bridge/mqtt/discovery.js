@@ -66,6 +66,35 @@ function publishDiscovery(mqtt, config) {
     device,
   }));
 
+  // Heart rate sensor
+  mqtt.publishAbsolute('homeassistant/sensor/kwatch_heart_rate/config', JSON.stringify({
+    name: 'Heart Rate',
+    unique_id: 'kwatch_heart_rate',
+    icon: 'mdi:heart-pulse',
+    state_topic: `${base}/device/heart_rate`,
+    value_template: '{{ value_json.bpm }}',
+    json_attributes_topic: `${base}/device/heart_rate`,
+    unit_of_measurement: 'bpm',
+    availability,
+    device,
+  }));
+
+  // Unsolicited event timeout (configurable from HA frontend)
+  mqtt.publishAbsolute('homeassistant/number/kwatch_unsolicited_timeout/config', JSON.stringify({
+    name: 'Unsolicited Event Timeout',
+    unique_id: 'kwatch_unsolicited_timeout',
+    icon: 'mdi:timer-outline',
+    command_topic: `${base}/config/unsolicited_timeout/set`,
+    state_topic: `${base}/config/unsolicited_timeout`,
+    min: 1,
+    max: 30,
+    step: 1,
+    unit_of_measurement: 'min',
+    mode: 'slider',
+    availability,
+    device,
+  }));
+
   console.log('[MQTT] Published HA auto-discovery configs');
 }
 
