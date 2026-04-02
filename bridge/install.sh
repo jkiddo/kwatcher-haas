@@ -3,6 +3,8 @@ set -e
 
 echo "=== K-WATCH BLE-to-MQTT Bridge Installer ==="
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 # Install system dependencies
 echo "Installing system packages..."
 sudo apt-get update
@@ -48,7 +50,6 @@ sudo setcap cap_net_raw,cap_net_admin+eip "$(which node)"
 
 # Install systemd service
 echo "Installing systemd service..."
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 sudo cp "$SCRIPT_DIR/kwatch-bridge.service" /etc/systemd/system/
 
 sudo systemctl daemon-reload
