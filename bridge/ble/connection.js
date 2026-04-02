@@ -233,6 +233,7 @@ class BleConnection extends EventEmitter {
   }
 
   _onNotification(data) {
+    const hex = data.toString('hex').replace(/(.{2})/g, '$1 ').trim();
     const parsed = parseResponse(data);
 
     if (parsed.type === 'keepalive') {
@@ -242,6 +243,7 @@ class BleConnection extends EventEmitter {
       return;
     }
 
+    console.log(`[BLE] RX [${hex}] → ${parsed.type}${parsed.type === 'event' ? ` action=${parsed.action}` : ''}${parsed.type === 'heart_rate' ? ` hr=${parsed.hr}` : ''}${parsed.type === 'battery' ? ` level=${parsed.level}` : ''}`);
     this.emit('data', parsed);
   }
 
