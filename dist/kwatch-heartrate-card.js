@@ -50,20 +50,6 @@ class KWatchHeartRateCard extends HTMLElement {
     };
     this._rendered = false;
     this._measuring = false;
-    this._startTimestampRefresh();
-  }
-
-  connectedCallback() {
-    this._startTimestampRefresh();
-  }
-
-  disconnectedCallback() {
-    clearInterval(this._refreshTimer);
-  }
-
-  _startTimestampRefresh() {
-    clearInterval(this._refreshTimer);
-    this._refreshTimer = setInterval(() => this._update(), 30000);
   }
 
   getCardSize() {

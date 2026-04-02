@@ -243,7 +243,7 @@ class BleConnection extends EventEmitter {
       return;
     }
 
-    console.log(`[BLE] RX [${hex}] → ${parsed.type}${parsed.type === 'event' ? ` action=${parsed.action}` : ''}${parsed.type === 'heart_rate' ? ` hr=${parsed.hr}` : ''}${parsed.type === 'battery' ? ` level=${parsed.level}` : ''}`);
+    console.log(`[BLE] RX [${hex}] → ${parsed.type}${parsed.type === 'event' ? ` action=${parsed.action}` : ''}${parsed.type === 'heart_rate' ? ` hr=${parsed.hr}` : ''}${parsed.type === 'battery' ? ` level=${parsed.level}` : ''}${parsed.type === 'ack' ? ` cmd=0x${parsed.command.toString(16).padStart(2, '0')}` : ''}`);
     this.emit('data', parsed);
   }
 

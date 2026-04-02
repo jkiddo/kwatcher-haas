@@ -17,9 +17,13 @@ const CMD_HEART_RATE_STOP = 0x15;
 const CMD_WEATHER = 0x22;
 const CMD_KEEPALIVE = 0x3a;
 
+const RESP_VIBRATE = 0x04;
+const RESP_TRIGGER_LOST = 0x05;
 const RESP_EVENT = 0x06;
 const RESP_BATTERY = 0x0b;
 const RESP_HEART_RATE = 0x14;
+const RESP_HEART_RATE_STOP = 0x15;
+const RESP_WEATHER = 0x22;
 const RESP_SENSOR_DATA = 0x24;
 const RESP_KEEPALIVE = 0x3a;
 
@@ -153,6 +157,12 @@ function parseResponse(data) {
 
   if (respId === RESP_KEEPALIVE) {
     return { type: 'keepalive' };
+  }
+
+  // Command acknowledgements — no action needed
+  if (respId === RESP_VIBRATE || respId === RESP_TRIGGER_LOST ||
+      respId === RESP_HEART_RATE_STOP || respId === RESP_WEATHER) {
+    return { type: 'ack', command: respId };
   }
 
   return { type: 'unknown' };
