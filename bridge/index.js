@@ -8,7 +8,7 @@
 const fs = require('fs');
 const config = require('./config');
 const BleConnection = require('./ble/connection');
-const { encodeTimeSync, encodeBatteryRequest, encodeNotification, encodeVibrate, encodeHeartRateStart, encodeHeartRateStop } = require('./ble/protocol');
+const { encodeTimeSync, encodeBatteryRequest, encodeNotification, encodeVibrate, encodeHeartRateStart, encodeHeartRateStop, resolveNotificationType } = require('./ble/protocol');
 const { fetchAndEncodeWeather } = require('./weather');
 const MqttBridge = require('./mqtt/client');
 const { publishDiscovery } = require('./mqtt/discovery');
@@ -136,12 +136,13 @@ mqtt.on('command', async (topic, payload) => {
     }
 
     if (topic.endsWith('send_message')) {
-      const { title = 'HA', message } = JSON.parse(payload.toString());
+      const { title = 'HA', message, app } = JSON.parse(payload.toString());
       if (!message) return;
       if (!ble.connected) { console.log('[BRIDGE] Cannot send: not connected'); return; }
 
-      console.log(`[BRIDGE] Sending message: "${message}" (title: "${title}")`);
-      await writePackets(encodeNotification(title, message), config.interPacketDelay);
+      const typeId = resolveNotificationType(app);
+      console.log(`[BRIDGE] Sending message: "${message}" (title: "${title}", app: ${app || 'default'}, typeId: ${typeId})`);
+      await writePackets(encodeNotification(title, message, typeId), config.interPacketDelay);
       history.addMessage(title, message);
 
     } else if (topic.endsWith('clear_history')) {

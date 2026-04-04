@@ -30,6 +30,43 @@ const RESP_KEEPALIVE = 0x3a;
 const EVENT_FIND_PHONE = 0x01;
 const EVENT_TAKE_PHOTO = 0x02;
 
+// Notification type IDs — each shows a branded icon on the watch
+const NOTIFICATION_TYPES = {
+  'phone':     0,  'call':      0,
+  'sms':       1,  'text':      1,  'message':   1,
+  'wechat':    2,
+  'qq':        3,
+  'facebook':  4,  'fb':        4,
+  'skype':     5,
+  'twitter':   6,  'x':         6,
+  'whatsapp':  7,
+  'line':      8,
+  'kakaotalk': 9,  'kakao':     9,
+  'dingding': 11,  'dingtalk': 11,
+  'wangwang': 12,  'aliwangwang': 12,
+  'instagram': 13, 'ig':       13,
+  'linkedin':  14,
+  'snapchat':  15, 'snap':     15,
+  'weibo':     16,
+  'tumblr':    17,
+  'nateon':    18,
+  'viber':     19,
+  'telegram':  20, 'tg':       20,
+  'vkontakte': 24, 'vk':       24,
+  'pinterest': 26,
+  'gmail':     28,
+};
+
+/**
+ * Resolve a notification type ID from an app name.
+ * @param {string} [app] - App name (case-insensitive)
+ * @returns {number} Type ID (defaults to 1 / SMS)
+ */
+function resolveNotificationType(app) {
+  if (!app) return 1;
+  return NOTIFICATION_TYPES[app.toLowerCase().trim()] ?? 1;
+}
+
 /**
  * Encode a notification as a multi-packet sequence.
  * @param {string} title
@@ -277,4 +314,6 @@ module.exports = {
   encodeWeather,
   encodeVibrate,
   parseResponse,
+  resolveNotificationType,
+  NOTIFICATION_TYPES,
 };
